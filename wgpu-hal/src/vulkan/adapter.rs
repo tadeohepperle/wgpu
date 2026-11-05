@@ -2305,6 +2305,12 @@ impl super::Instance {
                 super::Workarounds::FORCE_FILL_BUFFER_WITH_SIZE_GREATER_4096_ALIGNED_OFFSET_16,
                 phd_capabilities.properties.vendor_id == db::nvidia::VENDOR,
             );
+            // Matched by driver ID rather than vendor ID: Mesa's PanVK also reports Arm's
+            // vendor ID and is not affected.
+            workarounds.set(
+                super::Workarounds::DISABLE_TIMELINE_SEMAPHORES,
+                phd_capabilities.is_driver(vk::DriverId::ARM_PROPRIETARY),
+            );
         };
 
         if let Some(driver) = phd_capabilities.driver {
@@ -2393,12 +2399,14 @@ impl super::Instance {
         let private_caps = super::PrivateCapabilities {
             image_view_usage: phd_capabilities.device_api_version >= vk::API_VERSION_1_1
                 || phd_capabilities.supports_extension(khr::maintenance2::NAME),
-            timeline_semaphores: match phd_features.timeline_semaphore {
-                Some(features) => features.timeline_semaphore == vk::TRUE,
-                None => phd_features
-                    .timeline_semaphore
-                    .is_some_and(|ext| ext.timeline_semaphore != 0),
-            },
+            timeline_semaphores: !workarounds
+                .contains(super::Workarounds::DISABLE_TIMELINE_SEMAPHORES)
+                && match phd_features.timeline_semaphore {
+                    Some(features) => features.timeline_semaphore == vk::TRUE,
+                    None => phd_features
+                        .timeline_semaphore
+                        .is_some_and(|ext| ext.timeline_semaphore != 0),
+                },
             texture_d24: supports_format(
                 &self.shared.raw,
                 phd,
